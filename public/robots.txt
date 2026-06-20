@@ -7,4 +7,4 @@ Allow: /auth/login
 Disallow: /dashboard
 Disallow: /onboarding
 
-Sitemap: https://goalflow.app/sitemap.xml
+Sitemap:https://goalflow-dun.vercel.app/sitemap.xml
