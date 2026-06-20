@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
 import {
   LayoutDashboard, Target, Receipt, BarChart3, CalendarDays,
-  TrendingUp, LogOut, Menu, X, Zap, Calculator
+  TrendingUp, LogOut, Menu, X, Zap, Calculator, MessageSquare
 } from 'lucide-react'
 
 const NAV = [
@@ -161,6 +161,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {children}
         </main>
       </div>
+
+      {/* ── Feedback Button ── */}
+      <a
+        href="https://docs.google.com/forms/d/e/1FAIpQLScbORUOMK6GrNpORirEttPowJU2Rg7UisSCiyO6SaJGT5TPsA/viewform?usp=publish-editor"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-50 flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white px-4 py-2.5 rounded-full shadow-lg shadow-brand-500/20 hover:shadow-brand-500/40 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-200 font-medium text-sm"
+      >
+        <MessageSquare size={16} />
+        <span>Feedback</span>
+      </a>
     </div>
   )
 }
