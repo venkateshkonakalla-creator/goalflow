@@ -1,39 +1,82 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users can only read/write their own data
+
+    // ── Helper functions ──────────────────────────────────────────────────
     function isAuth() {
       return request.auth != null;
     }
     function isOwner(userId) {
       return request.auth.uid == userId;
     }
+    // Validates that an existing document's userId field matches the caller
     function isDocOwner(res) {
       return res == null || !('userId' in res.data) || request.auth.uid == res.data.userId;
     }
+    // Validates that an incoming write's userId field matches the caller
+    function isWriteOwner() {
+      return isOwner(request.resource.data.userId);
+    }
 
+    // ── /users/{userId} ───────────────────────────────────────────────────
     match /users/{userId} {
+      allow read, update, delete: if isAuth() && isOwner(userId);
+      allow create: if isAuth() && isOwner(userId);
+
+      match /usage/{docId} {
+        allow read, write: if isAuth() && isOwner(userId);
+      }
+    }
+
+    // ── /goals/{goalId} ───────────────────────────────────────────────────
+    match /goals/{goalId} {
+      allow read, update, delete: if isAuth() && isDocOwner(resource);
+      allow create: if isAuth() && isWriteOwner();
+    }
+
+    // ── /expenses/{expenseId} ─────────────────────────────────────────────
+    match /expenses/{expenseId} {
+      allow read, update, delete: if isAuth() && isDocOwner(resource);
+      allow create: if isAuth() && isWriteOwner();
+    }
+
+    // ── /income/{incomeId} ────────────────────────────────────────────────
+    match /income/{incomeId} {
+      allow read, update, delete: if isAuth() && isDocOwner(resource);
+      allow create: if isAuth() && isWriteOwner();
+    }
+
+    // ── /allocations/{allocId} ────────────────────────────────────────────
+    match /allocations/{allocId} {
+      allow read, update, delete: if isAuth() && isDocOwner(resource);
+      allow create: if isAuth() && isWriteOwner();
+    }
+
+    // ── /ad_events/{eventId} ─────────────────────────────────────────────
+    // Ad events are create-only; users cannot tamper with records once written.
+    match /ad_events/{eventId} {
+      allow read: if isAuth() && isDocOwner(resource);
+      allow create: if isAuth() && isWriteOwner();
+      allow update, delete: if false;  // immutable
+    }
+
+    // ── /user_ad_state/{userId} ───────────────────────────────────────────
+    // Each user has a single doc keyed by their own uid.
+    match /user_ad_state/{userId} {
       allow read, write: if isAuth() && isOwner(userId);
     }
 
-    match /goals/{goalId} {
-      allow read, write: if isAuth() && isDocOwner(resource);
-      allow create: if isAuth() && isOwner(request.resource.data.userId);
+    // ── /feedback/{feedbackId} ────────────────────────────────────────────
+    match /feedback/{feedbackId} {
+      allow read: if isAuth() && isDocOwner(resource);
+      allow create: if isAuth() && isWriteOwner();
+      allow update, delete: if false;  // immutable
     }
 
-    match /expenses/{expenseId} {
-      allow read, write: if isAuth() && isDocOwner(resource);
-      allow create: if isAuth() && isOwner(request.resource.data.userId);
-    }
-
-    match /income/{incomeId} {
-      allow read, update, delete: if isAuth() && isDocOwner(resource);
-      allow create: if isAuth() && isOwner(request.resource.data.userId);
-    }
-
-    match /allocations/{allocId} {
-      allow read, write: if isAuth() && isDocOwner(resource);
-      allow create: if isAuth() && isOwner(request.resource.data.userId);
+    // ── /contact_messages/{messageId} ──────────────────────────────────────
+    match /contact_messages/{messageId} {
+      allow create: if isAuth() && isWriteOwner();
+      allow read, update, delete: if false;  // immutable & write-only
     }
   }
 }

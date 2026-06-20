@@ -9,10 +9,12 @@ import { friendlyError } from '@/lib/errors'
 import { format } from 'date-fns'
 import {
   TrendingUp, TrendingDown, Target, Wallet, Zap,
-  ArrowUpRight, Plus, ChevronRight, AlertCircle, Calculator
+  Plus, ChevronRight, AlertCircle, Calculator, Activity, PiggyBank, BadgeCheck
 } from 'lucide-react'
 import Link from 'next/link'
 import type { Goal, Expense, Income, Allocation } from '@/types'
+import BannerAd from '@/components/BannerAd'
+
 
 const CATEGORY_EMOJI: Record<string, string> = {
   food: '🍽️', travel: '🚌', shopping: '🛍️', entertainment: '🎮',
@@ -23,17 +25,48 @@ const CATEGORY_COLORS: Record<string, string> = {
   entertainment: 'bg-purple-400', education: 'bg-cyan-400', health: 'bg-green-400', other: 'bg-surface-400',
 }
 
-const GOAL_COLORS = ['#6366f1', '#f97316', '#22c55e', '#06b6d4', '#8b5cf6', '#ec4899']
-
 const STATUS_STYLES: Record<string, { border: string; bg: string; text: string }> = {
   on_track: { border: 'border-success-500/20', bg: 'bg-success-500/8', text: 'text-success-400' },
   behind:   { border: 'border-warning-500/20', bg: 'bg-warning-500/8', text: 'text-warning-400' },
   critical: { border: 'border-danger-500/20',  bg: 'bg-danger-500/8',  text: 'text-danger-400' },
 }
 
+function getProgressColor(pct: number): string {
+  if (pct >= 100) return '#fbbf24' // Gold
+  if (pct >= 76)  return '#22c55e' // Green
+  if (pct >= 51)  return '#facc15' // Yellow
+  if (pct >= 26)  return '#f97316' // Orange
+  return '#ef4444'                 // Red
+}
+
+function calculateHealthScore(savingsRate: number, goals: Goal[], totalExpenses: number, monthlyIncome: number): {
+  score: number; label: string; color: string; description: string
+} {
+  // Savings Rate: up to 40 points (30%+ = full marks)
+  const savingsScore = Math.min(40, Math.round((savingsRate / 30) * 40))
+
+  // Goal Progress: up to 30 points (average completion across goals)
+  const totalGoals = goals.length
+  const avgProgress = totalGoals > 0
+    ? goals.reduce((s, g) => s + Math.min(100, (g.savedAmount / g.targetAmount) * 100), 0) / totalGoals
+    : 50
+  const goalScore = Math.round((avgProgress / 100) * 30)
+
+  // Expense Ratio: up to 30 points (spending < 60% of income = full marks)
+  const expenseRatio = monthlyIncome > 0 ? (totalExpenses / monthlyIncome) : 0.5
+  const expenseScore = Math.max(0, Math.round((1 - Math.min(1, expenseRatio / 0.7)) * 30))
+
+  const score = Math.min(100, Math.max(0, savingsScore + goalScore + expenseScore))
+
+  if (score >= 80) return { score, label: 'Excellent', color: '#22c55e',  description: 'Outstanding financial health!' }
+  if (score >= 60) return { score, label: 'Good',      color: '#6366f1',  description: 'Solid progress, keep it up.' }
+  if (score >= 40) return { score, label: 'Average',   color: '#f97316',  description: 'Room for improvement ahead.' }
+  return               { score, label: 'Poor',       color: '#ef4444',  description: 'Focus on savings and reducing expenses.' }
+}
+
 function StatCard({ label, value, sub, icon: Icon, color }: { label: string; value: string | number; sub?: string; icon: any; color: string }) {
   return (
-    <div className="glass rounded-2xl p-4 sm:p-5">
+    <div className="glass rounded-2xl p-4 sm:p-5 hover:bg-white/5 transition-colors">
       <div className="flex items-start justify-between mb-3">
         <p className="text-xs sm:text-sm text-surface-400">{label}</p>
         <div className={`w-8 h-8 rounded-lg ${color} bg-opacity-15 flex items-center justify-center flex-shrink-0`}>
@@ -59,52 +92,25 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!user) return
-    console.log('📊 [Dashboard] Loading data for user:', user.uid)
-    
-    const fetchGoals = getGoals(user.uid).catch(err => {
-      console.error('❌ [Dashboard] Error loading goals:', err)
-      showToast(friendlyError(err, 'Could not load goals.'), 'error')
-      return [] as Goal[]
-    })
-    const fetchExpenses = getExpenses(user.uid, currentMonth).catch(err => {
-      console.error('❌ [Dashboard] Error loading expenses:', err)
-      showToast(friendlyError(err, 'Could not load expenses.'), 'error')
-      return [] as Expense[]
-    })
-    const fetchIncome = getIncome(user.uid, currentMonth).catch(err => {
-      console.error('❌ [Dashboard] Error loading income:', err)
-      showToast(friendlyError(err, 'Could not load income.'), 'error')
-      return null
-    })
-    const fetchAllocations = getAllocations(user.uid, currentMonth).catch(err => {
-      console.error('❌ [Dashboard] Error loading allocations:', err)
-      showToast(friendlyError(err, 'Could not load allocations.'), 'error')
-      return [] as Allocation[]
-    })
+    const fetchGoals = getGoals(user.uid).catch(err => { showToast(friendlyError(err, 'Could not load goals.'), 'error'); return [] as Goal[] })
+    const fetchExpenses = getExpenses(user.uid, currentMonth).catch(err => { showToast(friendlyError(err, 'Could not load expenses.'), 'error'); return [] as Expense[] })
+    const fetchIncome = getIncome(user.uid, currentMonth).catch(() => null)
+    const fetchAllocations = getAllocations(user.uid, currentMonth).catch(() => [] as Allocation[])
 
     Promise.all([fetchGoals, fetchExpenses, fetchIncome, fetchAllocations])
       .then(([g, e, inc, alloc]) => {
-        console.log('📊 [Dashboard] Data loaded successfully. Goals:', g.length, 'Expenses:', e.length)
-        setGoals(g)
-        setExpenses(e)
-        setIncome(inc)
-        setAllocations(alloc)
-      }).catch(err => {
-        console.error('❌ [Dashboard] Promise.all unexpected error:', err)
-      })
-      .finally(() => setLoading(false))
+        setGoals(g); setExpenses(e); setIncome(inc); setAllocations(alloc)
+      }).finally(() => setLoading(false))
   }, [user, currentMonth]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const monthlyIncome = income?.amount || 0
-  const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0)
-  const remaining = monthlyIncome - totalExpenses
-  const savingsRate = calculateSavingsRate(monthlyIncome, totalExpenses)
+  const monthlyIncome  = income?.amount || 0
+  const totalExpenses  = expenses.reduce((s, e) => s + e.amount, 0)
+  const remaining      = monthlyIncome - totalExpenses
+  const savingsRate    = calculateSavingsRate(monthlyIncome, totalExpenses)
+  const totalSaved     = goals.reduce((s, g) => s + g.savedAmount, 0)
 
-  // Recent expenses with impact
-  const recentExpenses = expenses.slice(0, 5)
-
-  // Latest impact messages
-  const latestImpacts = recentExpenses
+  const recentExpenses  = expenses.slice(0, 5)
+  const latestImpacts   = recentExpenses
     .map(e => {
       const impact = calculateGoalImpact(e, goals, allocations)
       return impact && impact.daysDelayed > 0 ? { expense: e, impact } : null
@@ -112,19 +118,16 @@ export default function DashboardPage() {
     .filter((x): x is { expense: Expense; impact: NonNullable<ReturnType<typeof calculateGoalImpact>> } => x !== null)
     .slice(0, 2)
 
-  const status = goals.length > 0 || monthlyIncome > 0
-    ? getDashboardStatus(goals, monthlyIncome, totalExpenses, expenses)
-    : null
+  const status      = goals.length > 0 || monthlyIncome > 0 ? getDashboardStatus(goals, monthlyIncome, totalExpenses, expenses) : null
   const statusStyle = status ? STATUS_STYLES[status.type] : null
+  const healthData  = calculateHealthScore(savingsRate, goals, totalExpenses, monthlyIncome)
 
   if (loading) {
     return (
       <div className="p-4 sm:p-6 md:p-8">
         <div className="h-20 glass rounded-2xl mb-6 shimmer" />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="glass rounded-2xl p-5 h-28 shimmer" />
-          ))}
+          {[...Array(4)].map((_, i) => <div key={i} className="glass rounded-2xl p-5 h-28 shimmer" />)}
         </div>
       </div>
     )
@@ -152,36 +155,56 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── Stats ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
-        <StatCard
-          label="Monthly Income"
-          value={monthlyIncome ? `₹${monthlyIncome.toLocaleString('en-IN')}` : '—'}
-          sub={income?.source || 'Not set'}
-          icon={Wallet}
-          color="bg-brand-400"
-        />
-        <StatCard
-          label="Savings Rate"
-          value={`${savingsRate}%`}
-          sub={savingsRate >= 30 ? '🎉 Great job!' : 'Aim for 30%+'}
-          icon={TrendingUp}
-          color="bg-success-400"
-        />
-        <StatCard
-          label="Active Goals"
-          value={goals.filter(g => g.savedAmount < g.targetAmount).length}
-          sub={`${goals.length} total goals`}
-          icon={Target}
-          color="bg-warning-400"
-        />
-        <StatCard
-          label="Money Remaining"
-          value={`₹${Math.max(0, remaining).toLocaleString('en-IN')}`}
-          sub="This month"
-          icon={remaining >= 0 ? TrendingUp : TrendingDown}
-          color={remaining >= 0 ? 'bg-success-400' : 'bg-danger-400'}
-        />
+      {/* ── Financial Health Score ── */}
+      <div className="glass rounded-2xl p-5 sm:p-6 mb-6 border border-white/5">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-5">
+          <div className="flex items-center gap-4">
+            <div
+              className="relative w-20 h-20 flex-shrink-0"
+            >
+              <svg className="w-full h-full transform -rotate-90">
+                <circle cx="40" cy="40" r="34" className="stroke-white/8" strokeWidth="6" fill="transparent" />
+                <circle
+                  cx="40" cy="40" r="34"
+                  strokeWidth="6" fill="transparent"
+                  strokeDasharray={2 * Math.PI * 34}
+                  strokeDashoffset={2 * Math.PI * 34 * (1 - healthData.score / 100)}
+                  strokeLinecap="round"
+                  style={{ stroke: healthData.color, transition: 'stroke-dashoffset 1s ease' }}
+                />
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-lg font-extrabold text-surface-50">{healthData.score}</span>
+              </div>
+            </div>
+            <div>
+              <p className="text-xs text-surface-500 uppercase tracking-wider mb-1">Financial Health</p>
+              <p className="text-xl font-bold" style={{ color: healthData.color }}>{healthData.label}</p>
+              <p className="text-xs text-surface-400 mt-0.5">{healthData.description}</p>
+            </div>
+          </div>
+          <div className="flex-1 grid grid-cols-3 gap-3 sm:ml-4">
+            {[
+              { label: 'Savings Rate', value: `${savingsRate}%`, color: savingsRate >= 30 ? '#22c55e' : '#f97316' },
+              { label: 'Goal Progress', value: goals.length > 0 ? `${Math.round(goals.reduce((s,g) => s + Math.min(100,(g.savedAmount/g.targetAmount)*100),0)/goals.length)}%` : 'N/A', color: '#6366f1' },
+              { label: 'Expense Ratio', value: monthlyIncome > 0 ? `${Math.round((totalExpenses / monthlyIncome) * 100)}%` : 'N/A', color: totalExpenses > monthlyIncome * 0.7 ? '#ef4444' : '#22c55e' },
+            ].map(stat => (
+              <div key={stat.label} className="bg-white/3 rounded-xl p-3 text-center">
+                <p className="text-xs text-surface-500 mb-1">{stat.label}</p>
+                <p className="text-base font-bold" style={{ color: stat.color }}>{stat.value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Quick Stats ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 sm:gap-4 mb-6 sm:mb-8">
+        <StatCard label="Total Goals"      value={goals.length}                                                                icon={Target}      color="bg-brand-400"   sub={`${goals.filter(g=>g.savedAmount>=g.targetAmount).length} completed`} />
+        <StatCard label="Total Saved"      value={`₹${totalSaved.toLocaleString('en-IN')}`}                                  icon={PiggyBank}    color="bg-success-400" sub="across all goals" />
+        <StatCard label="Monthly Income"   value={monthlyIncome ? `₹${monthlyIncome.toLocaleString('en-IN')}` : '—'}         icon={Wallet}       color="bg-brand-400"   sub={income?.source || 'Not set'} />
+        <StatCard label="Monthly Expenses" value={`₹${totalExpenses.toLocaleString('en-IN')}`}                               icon={TrendingDown} color="bg-danger-400"  sub="This month" />
+        <StatCard label="Savings Rate"     value={`${savingsRate}%`}                                                          icon={Activity}     color="bg-success-400" sub={savingsRate >= 30 ? '🎉 Great job!' : 'Aim for 30%+'} />
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">
@@ -208,7 +231,7 @@ export default function DashboardPage() {
                       <span className="text-surface-50 font-medium">₹{item.expense.amount.toLocaleString('en-IN')}</span>
                       {' '}on {item.expense.category}.{' '}
                       <span className="text-warning-300 font-medium">
-                        Your "{item.impact.goalName}" goal is now delayed by {item.impact.daysDelayed} day{item.impact.daysDelayed !== 1 ? 's' : ''}.
+                        Your &ldquo;{item.impact.goalName}&rdquo; goal is now delayed by {item.impact.daysDelayed} day{item.impact.daysDelayed !== 1 ? 's' : ''}.
                       </span>
                     </p>
                   </div>
@@ -239,9 +262,9 @@ export default function DashboardPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {goals.slice(0, 4).map((goal, i) => {
-                  const pct = Math.min(100, Math.round((goal.savedAmount / goal.targetAmount) * 100))
-                  const color = GOAL_COLORS[i % GOAL_COLORS.length]
+                {goals.slice(0, 4).map((goal) => {
+                  const pct   = Math.min(100, Math.round((goal.savedAmount / goal.targetAmount) * 100))
+                  const color = getProgressColor(pct)
                   return (
                     <div key={goal.id}>
                       <div className="flex items-start justify-between mb-2 gap-2">
@@ -254,7 +277,7 @@ export default function DashboardPage() {
                             )}
                           </p>
                         </div>
-                        <span className="text-xs font-semibold text-surface-400 flex-shrink-0">{pct}%</span>
+                        <span className="text-xs font-bold flex-shrink-0" style={{ color }}>{pct}%</span>
                       </div>
                       <div className="h-1.5 bg-white/8 rounded-full overflow-hidden">
                         <div
@@ -322,6 +345,7 @@ export default function DashboardPage() {
               <div className="space-y-3">
                 {allocations.slice(0, 5).map((alloc, i) => {
                   const pct = Math.round((alloc.amount / monthlyIncome) * 100)
+                  const colors = ['#6366f1', '#f97316', '#22c55e', '#06b6d4', '#8b5cf6']
                   return (
                     <div key={alloc.id}>
                       <div className="flex justify-between text-xs text-surface-400 mb-1">
@@ -331,7 +355,7 @@ export default function DashboardPage() {
                       <div className="h-1 bg-white/8 rounded-full overflow-hidden">
                         <div
                           className="h-full rounded-full"
-                          style={{ width: `${pct}%`, backgroundColor: GOAL_COLORS[i % GOAL_COLORS.length] }}
+                          style={{ width: `${pct}%`, backgroundColor: colors[i % colors.length] }}
                         />
                       </div>
                     </div>
@@ -374,16 +398,8 @@ export default function DashboardPage() {
             </Link>
           </div>
 
-          {/* Tips */}
-          <div className="glass rounded-2xl p-5 border-brand-500/15">
-            <div className="flex items-center gap-2 mb-3">
-              <AlertCircle size={14} className="text-brand-400" />
-              <p className="text-xs font-medium text-brand-300">Pro Tip</p>
-            </div>
-            <p className="text-xs text-surface-400 leading-relaxed">
-              Allocate your salary on the 1st of every month. People who plan first spend 23% less.
-            </p>
-          </div>
+          {/* Banner Ad */}
+          <BannerAd />
         </div>
       </div>
     </div>

@@ -1,6 +1,7 @@
 'use client'
 // src/app/page.tsx — Landing Page
 import Link from 'next/link'
+import Footer from '@/components/Footer'
 import {
   ArrowRight, TrendingUp, Target, Zap, Shield, BarChart3,
   Star, Sparkles
@@ -351,17 +352,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── Footer ── */}
-      <footer className="border-t border-white/5 py-8 px-6">
-        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-surface-600">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-brand-500 flex items-center justify-center">
-              <TrendingUp size={12} className="text-white" />
-            </div>
-            <span className="font-medium text-surface-500">GoalFlow</span>
-          </div>
-          <p>© 2025 GoalFlow. Built for India's young achievers.</p>
-        </div>
-      </footer>
+      <Footer />
     </div>
   )
 }

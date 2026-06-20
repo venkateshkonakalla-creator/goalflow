@@ -4,10 +4,15 @@ import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
+import { useToast } from '@/context/ToastContext'
+import { saveFeedback } from '@/lib/adService'
+import SocialBarAd from '@/components/SocialBarAd'
+import Footer from '@/components/Footer'
 import {
   LayoutDashboard, Target, Receipt, BarChart3, CalendarDays,
-  TrendingUp, LogOut, Menu, X, Zap, Calculator, MessageSquare
+  TrendingUp, LogOut, Menu, X, Zap, Calculator, MessageSquare, Star
 } from 'lucide-react'
+
 
 const NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -21,9 +26,17 @@ const NAV = [
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, logOut } = useAuth()
+  const { showToast } = useToast()
   const router = useRouter()
   const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  // Feedback states
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [feedbackRating, setFeedbackRating] = useState(0)
+  const [feedbackText, setFeedbackText] = useState('')
+  const [feedbackEmail, setFeedbackEmail] = useState('')
+  const [submittingFeedback, setSubmittingFeedback] = useState(false)
 
   useEffect(() => {
     if (!loading && !user) router.push('/auth/login')
@@ -139,6 +152,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* ── Main ── */}
       <div className="flex-1 flex flex-col min-w-0 w-full">
+        <SocialBarAd />
         {/* Top bar (mobile) */}
         <header className="lg:hidden h-14 border-b border-white/5 flex items-center justify-between px-3 flex-shrink-0 sticky top-0 bg-surface-950/90 backdrop-blur-md z-30">
           <button
@@ -157,21 +171,151 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="w-8" />
         </header>
 
-        <main className="flex-1 overflow-y-auto overflow-x-hidden w-full">
-          {children}
+        <main className="flex-1 overflow-y-auto overflow-x-hidden w-full flex flex-col">
+          <div className="flex-1">
+            {children}
+          </div>
+          <Footer />
         </main>
       </div>
 
       {/* ── Feedback Button ── */}
-      <a
-        href="https://docs.google.com/forms/d/e/1FAIpQLScbORUOMK6GrNpORirEttPowJU2Rg7UisSCiyO6SaJGT5TPsA/viewform?usp=publish-editor"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-50 flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white px-4 py-2.5 rounded-full shadow-lg shadow-brand-500/20 hover:shadow-brand-500/40 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-200 font-medium text-sm"
+      <button
+        onClick={() => setFeedbackOpen(true)}
+        className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-50 flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white px-4 py-2.5 rounded-full shadow-lg shadow-brand-500/20 hover:shadow-brand-500/40 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-200 font-medium text-sm border border-brand-400/20"
       >
         <MessageSquare size={16} />
         <span>Feedback</span>
-      </a>
+      </button>
+
+      {/* ── Feedback Modal ── */}
+      {feedbackOpen && (
+        <div className="fixed inset-0 z-[250] flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => { if (!submittingFeedback) setFeedbackOpen(false) }}
+          />
+          <div className="relative z-10 w-full sm:max-w-md glass rounded-t-3xl sm:rounded-3xl p-6 sm:p-8 max-h-[92vh] overflow-y-auto border border-white/10 shadow-glow animate-slide-up">
+            <button
+              onClick={() => setFeedbackOpen(false)}
+              disabled={submittingFeedback}
+              className="absolute top-4 right-4 p-1.5 rounded-lg text-surface-400 hover:text-surface-200 hover:bg-white/5 transition-colors"
+              aria-label="Close"
+            >
+              <X size={16} />
+            </button>
+
+            <h2 className="text-xl font-bold mb-1 text-surface-50">Share your thoughts</h2>
+            <p className="text-xs text-surface-400 mb-6">
+              We'd love to hear your feedback to make GoalFlow even better.
+            </p>
+
+            <form onSubmit={async (e) => {
+              e.preventDefault()
+              if (feedbackRating === 0) {
+                showToast('Please select a rating.', 'error')
+                return
+              }
+              if (!feedbackText.trim()) {
+                showToast('Please enter your feedback comments.', 'error')
+                return
+              }
+              setSubmittingFeedback(true)
+              try {
+                await saveFeedback(user?.uid || null, {
+                  rating: feedbackRating,
+                  message: feedbackText.trim(),
+                  email: feedbackEmail.trim() || undefined
+                })
+                showToast('Feedback submitted. Thank you! 👋', 'success')
+                setFeedbackRating(0)
+                setFeedbackText('')
+                setFeedbackEmail('')
+                setFeedbackOpen(false)
+              } catch (err) {
+                showToast('Could not save feedback. Please try again.', 'error')
+              } finally {
+                setSubmittingFeedback(false)
+              }
+            }} className="space-y-5">
+              {/* Rating Star Selection */}
+              <div>
+                <label className="block text-xs font-semibold text-surface-400 mb-2 uppercase tracking-wider">
+                  Rating
+                </label>
+                <div className="flex gap-2.5">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setFeedbackRating(star)}
+                      disabled={submittingFeedback}
+                      className="p-1 hover:scale-110 active:scale-95 transition-all text-yellow-500"
+                    >
+                      <Star
+                        size={28}
+                        className="transition-colors"
+                        fill={feedbackRating >= star ? '#eab308' : 'none'}
+                        strokeWidth={1.5}
+                      />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Feedback Text */}
+              <div>
+                <label className="block text-xs font-semibold text-surface-400 mb-1.5 uppercase tracking-wider">
+                  Feedback comments
+                </label>
+                <textarea
+                  value={feedbackText}
+                  onChange={(e) => setFeedbackText(e.target.value)}
+                  disabled={submittingFeedback}
+                  placeholder="What is working well? What could we improve?"
+                  rows={4}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-surface-50 placeholder:text-surface-600 focus:border-brand-500/50 resize-none"
+                  required
+                />
+              </div>
+
+              {/* Optional Email */}
+              <div>
+                <label className="block text-xs font-semibold text-surface-400 mb-1.5 uppercase tracking-wider">
+                  Email (optional)
+                </label>
+                <input
+                  type="email"
+                  value={feedbackEmail}
+                  onChange={(e) => setFeedbackEmail(e.target.value)}
+                  disabled={submittingFeedback}
+                  placeholder="your.email@example.com"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-surface-50 placeholder:text-surface-600 focus:border-brand-500/50"
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setFeedbackOpen(false)}
+                  disabled={submittingFeedback}
+                  className="flex-1 bg-white/5 hover:bg-white/8 border border-white/10 text-surface-300 py-3 rounded-xl text-sm transition-colors font-medium min-h-[44px]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingFeedback}
+                  className="flex-1 bg-brand-500 hover:bg-brand-600 disabled:opacity-60 text-white font-semibold py-3 rounded-xl text-sm transition-colors flex items-center justify-center gap-2 min-h-[44px]"
+                >
+                  {submittingFeedback ? 'Sending…' : 'Submit'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

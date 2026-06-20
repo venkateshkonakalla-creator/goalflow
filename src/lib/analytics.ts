@@ -62,3 +62,24 @@ export function trackOnboardingCompleted(stepsCompleted: number) {
 export function trackPageView(pageName: string) {
   track('page_view', { page_name: pageName })
 }
+
+/** User generated a savings plan. */
+export function trackPlanningGenerated(goalId?: string) {
+  track('planning_generated', { goal_id: goalId })
+}
+
+/** User submitted the contact form. */
+export function trackContactSubmitted() {
+  track('contact_submitted')
+}
+
+/** User started watching a rewarded ad. */
+export function trackAdStarted(feature: string) {
+  track('ad_started', { feature })
+}
+
+/** User successfully completed a rewarded ad. */
+export function trackAdCompleted(feature: string) {
+  track('ad_completed', { feature })
+}
+

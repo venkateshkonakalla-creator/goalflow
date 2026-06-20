@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { useToast } from '@/context/ToastContext'
+import { useAd } from '@/context/AdContext'
 import { getGoals, getExpenses, getIncome, getAllocations } from '@/lib/db'
 import { calculateAffordability, type AffordabilityResult } from '@/lib/goalImpact'
 import { friendlyError } from '@/lib/errors'
@@ -14,6 +15,7 @@ import type { Goal, Expense, Income, Allocation } from '@/types'
 export default function AffordPage() {
   const { user } = useAuth()
   const { showToast } = useToast()
+  const { watchAd, isUnlocked, consumeAd } = useAd()
   const [goals, setGoals] = useState<Goal[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [income, setIncome] = useState<Income | null>(null)
@@ -46,7 +48,7 @@ export default function AffordPage() {
   const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0)
   const totalAllocated = allocations.reduce((s, a) => s + a.amount, 0)
 
-  function handleCalculate() {
+  async function handleCalculate() {
     const costNum = Number(cost)
     if (!costNum || costNum <= 0) {
       showToast('Please enter a valid cost.', 'error')
@@ -67,6 +69,18 @@ export default function AffordPage() {
     )
     setResult(r)
     trackAffordabilityCheck(costNum, r.canAfford)
+    await consumeAd('affordability_checker')
+  }
+
+  async function handleButtonClick() {
+    if (isUnlocked('affordability_checker')) {
+      await handleCalculate()
+    } else {
+      const success = await watchAd('affordability_checker')
+      if (success) {
+        await handleCalculate()
+      }
+    }
   }
 
   if (loading) {
@@ -126,10 +140,14 @@ export default function AffordPage() {
           </div>
         </div>
         <button
-          onClick={handleCalculate}
+          onClick={handleButtonClick}
           className="w-full flex items-center justify-center gap-2 bg-brand-500 hover:bg-brand-600 text-white font-semibold py-3 rounded-xl transition-colors min-h-[48px]"
         >
-          <Sparkles size={16} /> Check affordability
+          {isUnlocked('affordability_checker') ? (
+            <><Sparkles size={16} /> Check affordability</>
+          ) : (
+            <><Sparkles size={16} /> Watch Ad to Check Affordability</>
+          )}
         </button>
       </div>
 

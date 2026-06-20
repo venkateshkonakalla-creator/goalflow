@@ -160,3 +160,62 @@ export async function getAllocations(userId: string, month: string): Promise<All
     throw error // Re-throw to see actual error
   }
 }
+
+// ─── USER MONETIZATION USAGE & CONTACT ──────────────────────────────────────────
+export interface UserUsage {
+  freeGoalUsed: boolean
+  freeAffordabilityUsed: boolean
+  freePlanningUsed: boolean
+}
+
+export async function getUserUsage(userId: string): Promise<UserUsage> {
+  try {
+    const snap = await getDoc(doc(db, 'users', userId, 'usage', 'state'))
+    if (!snap.exists()) {
+      return {
+        freeGoalUsed: false,
+        freeAffordabilityUsed: false,
+        freePlanningUsed: false
+      }
+    }
+    const data = snap.data()
+    return {
+      freeGoalUsed: !!data.freeGoalUsed,
+      freeAffordabilityUsed: !!data.freeAffordabilityUsed,
+      freePlanningUsed: !!data.freePlanningUsed
+    }
+  } catch (error) {
+    console.error('❌ [getUserUsage] Error fetching user usage:', error)
+    return {
+      freeGoalUsed: false,
+      freeAffordabilityUsed: false,
+      freePlanningUsed: false
+    }
+  }
+}
+
+export async function updateUserUsage(userId: string, data: Partial<UserUsage>) {
+  try {
+    await setDoc(doc(db, 'users', userId, 'usage', 'state'), data, { merge: true })
+    console.log('✅ [updateUserUsage] Successfully updated usage for user:', userId, data)
+  } catch (error) {
+    console.error('❌ [updateUserUsage] Error updating user usage:', error)
+    throw error
+  }
+}
+
+export async function saveContactMessage(userId: string | null, data: { name: string; email: string; message: string }) {
+  try {
+    const ref = await addDoc(collection(db, 'contact_messages'), {
+      ...data,
+      userId,
+      createdAt: serverTimestamp(),
+    })
+    console.log('✅ [saveContactMessage] Contact message saved. Doc ID:', ref.id)
+    return ref.id
+  } catch (error) {
+    console.error('❌ [saveContactMessage] Error saving contact message:', error)
+    throw error
+  }
+}
+

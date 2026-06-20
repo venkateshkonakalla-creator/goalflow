@@ -51,6 +51,7 @@ export default function ExpensesPage() {
   const [deleting, setDeleting] = useState(false)
   const [latestImpact, setLatestImpact] = useState<{ message: string; daysDelayed: number } | null>(null)
 
+
   const currentMonth = format(new Date(), 'yyyy-MM')
 
   useEffect(() => {
@@ -278,6 +279,7 @@ export default function ExpensesPage() {
 
         {/* ── Category breakdown ── */}
         <div className="space-y-4">
+
           <div className="glass rounded-2xl p-5">
             <h2 className="text-sm font-semibold mb-4">Spending by category</h2>
             {byCategory.length === 0 ? (

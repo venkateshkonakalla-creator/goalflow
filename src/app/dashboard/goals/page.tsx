@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { useToast } from '@/context/ToastContext'
+import { useAd } from '@/context/AdContext'
 import { getGoals, getExpenses, createGoal, updateGoal, deleteGoal } from '@/lib/db'
 import { forecastDateLabel, getGoalHealthStatus, type GoalHealthStatus } from '@/lib/goalImpact'
 import { friendlyError } from '@/lib/errors'
@@ -10,6 +11,14 @@ import { trackGoalCreated, trackGoalCompleted } from '@/lib/analytics'
 import { Target, Plus, Pencil, Trash2, CheckCircle2 } from 'lucide-react'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import type { Goal, GoalCategory, Expense } from '@/types'
+
+function getProgressLevel(pct: number) {
+  if (pct >= 100) return { color: '#fbbf24', textClass: 'text-amber-400', bgClass: 'bg-amber-400' }
+  if (pct >= 76) return { color: '#22c55e', textClass: 'text-success-400', bgClass: 'bg-success-400' }
+  if (pct >= 51) return { color: '#facc15', textClass: 'text-yellow-400', bgClass: 'bg-yellow-400' }
+  if (pct >= 26) return { color: '#f97316', textClass: 'text-warning-400', bgClass: 'bg-warning-400' }
+  return { color: '#ef4444', textClass: 'text-danger-400', bgClass: 'bg-danger-400' }
+}
 
 const CATEGORIES: { value: GoalCategory; label: string; emoji: string; color: string }[] = [
   { value: 'emergency_fund', label: 'Emergency Fund', emoji: '🛡️', color: '#f97316' },
@@ -56,6 +65,7 @@ function validateForm(form: typeof DEFAULT_FORM): string | null {
 export default function GoalsPage() {
   const { user } = useAuth()
   const { showToast } = useToast()
+  const { watchAd, isUnlocked, consumeAd } = useAd()
   const [goals, setGoals] = useState<Goal[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [loading, setLoading] = useState(true)
@@ -99,6 +109,34 @@ export default function GoalsPage() {
     setFormError(null)
     setEditingId(null)
     setShowForm(true)
+  }
+
+  async function handleNewGoalClick() {
+    if (isUnlocked('goal_creation')) {
+      openCreate()
+    } else {
+      const success = await watchAd('goal_creation')
+      if (success) {
+        openCreate()
+      }
+    }
+  }
+
+  async function handleSuggestionClick(suggestion: { label: string; category: GoalCategory }) {
+    if (isUnlocked('goal_creation')) {
+      setForm({ ...DEFAULT_FORM, name: suggestion.label, category: suggestion.category })
+      setFormError(null)
+      setEditingId(null)
+      setShowForm(true)
+    } else {
+      const success = await watchAd('goal_creation')
+      if (success) {
+        setForm({ ...DEFAULT_FORM, name: suggestion.label, category: suggestion.category })
+        setFormError(null)
+        setEditingId(null)
+        setShowForm(true)
+      }
+    }
   }
 
   function openEdit(goal: Goal) {
@@ -152,6 +190,7 @@ export default function GoalsPage() {
         setGoals(prev => [{ id, userId: user.uid, ...data, createdAt: new Date(), updatedAt: new Date() }, ...prev])
         trackGoalCreated(data.category, data.targetAmount)
         showToast('Goal created.')
+        await consumeAd('goal_creation')
       }
       setShowForm(false)
     } catch (err) {
@@ -192,10 +231,14 @@ export default function GoalsPage() {
           </p>
         </div>
         <button
-          onClick={openCreate}
+          onClick={handleNewGoalClick}
           className="flex items-center justify-center gap-2 bg-brand-500 hover:bg-brand-600 text-white text-sm px-4 py-2.5 rounded-xl transition-colors font-medium min-h-[44px] sm:min-h-0 sm:w-auto w-full"
         >
-          <Plus size={16} /> New Goal
+          {isUnlocked('goal_creation') ? (
+            <><Plus size={16} /> New Goal</>
+          ) : (
+            <><Plus size={16} /> Watch Ad to Add Goal</>
+          )}
         </button>
       </div>
 
@@ -210,8 +253,11 @@ export default function GoalsPage() {
           </div>
           <div className="h-2 bg-white/8 rounded-full overflow-hidden">
             <div
-              className="h-full bg-brand-500 rounded-full progress-bar"
-              style={{ width: `${totalTarget > 0 ? Math.min(100, Math.round((totalSaved / totalTarget) * 100)) : 0}%` }}
+              className="h-full rounded-full progress-bar"
+              style={{
+                width: `${totalTarget > 0 ? Math.min(100, Math.round((totalSaved / totalTarget) * 100)) : 0}%`,
+                backgroundColor: getProgressLevel(totalTarget > 0 ? Math.round((totalSaved / totalTarget) * 100) : 0).color
+              }}
             />
           </div>
           <p className="text-xs text-surface-500 mt-2">
@@ -241,12 +287,7 @@ export default function GoalsPage() {
             ].map(suggestion => (
               <button
                 key={suggestion.category}
-                onClick={() => {
-                  setForm({ ...DEFAULT_FORM, name: suggestion.label, category: suggestion.category })
-                  setFormError(null)
-                  setEditingId(null)
-                  setShowForm(true)
-                }}
+                onClick={() => handleSuggestionClick(suggestion)}
                 className="flex items-center gap-1.5 bg-white/5 hover:bg-white/8 border border-white/10 text-surface-300 text-xs px-3 py-2 rounded-xl transition-colors"
               >
                 <span>{suggestion.emoji}</span> {suggestion.label}
@@ -254,10 +295,14 @@ export default function GoalsPage() {
             ))}
           </div>
           <button
-            onClick={openCreate}
+            onClick={handleNewGoalClick}
             className="inline-flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white text-sm px-5 py-2.5 rounded-xl transition-colors font-medium min-h-[44px]"
           >
-            <Plus size={16} /> Create your first goal
+            {isUnlocked('goal_creation') ? (
+              <><Plus size={16} /> Create your first goal</>
+            ) : (
+              <><Plus size={16} /> Watch Ad to Create Goal</>
+            )}
           </button>
         </div>
       ) : (
@@ -271,6 +316,7 @@ export default function GoalsPage() {
             const health = getGoalHealthStatus(goal, expenses)
             const healthBadge = HEALTH_BADGES[health]
             const estCompletion = forecastDateLabel(goal)
+            const progressColor = getProgressLevel(pct).color
 
             return (
               <div key={goal.id} className={`glass rounded-2xl p-5 ${completed ? 'border-success-500/20' : ''}`}>
@@ -279,7 +325,7 @@ export default function GoalsPage() {
                   <div className="flex items-center gap-3 min-w-0">
                     <div
                       className="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
-                      style={{ backgroundColor: `${goal.color}20` }}
+                      style={{ backgroundColor: `${progressColor}20` }}
                     >
                       {cat?.emoji || '🎯'}
                     </div>
@@ -319,19 +365,19 @@ export default function GoalsPage() {
                 {/* Amount */}
                 <div className="flex items-end justify-between mb-3 gap-2">
                   <div className="min-w-0">
-                    <p className="text-2xl font-bold truncate" style={{ color: goal.color }}>
+                    <p className="text-2xl font-bold truncate" style={{ color: progressColor }}>
                       ₹{goal.savedAmount.toLocaleString('en-IN')}
                     </p>
                     <p className="text-xs text-surface-500">of ₹{goal.targetAmount.toLocaleString('en-IN')}</p>
                   </div>
-                  <p className="text-3xl font-bold text-surface-700 flex-shrink-0">{pct}%</p>
+                  <p className="text-3xl font-bold flex-shrink-0 font-display" style={{ color: progressColor }}>{pct}%</p>
                 </div>
 
                 {/* Progress bar */}
                 <div className="h-2 bg-white/8 rounded-full overflow-hidden mb-4">
                   <div
                     className="h-full rounded-full progress-bar"
-                    style={{ width: `${pct}%`, backgroundColor: goal.color }}
+                    style={{ width: `${pct}%`, backgroundColor: progressColor }}
                   />
                 </div>
 
