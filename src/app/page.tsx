@@ -46,24 +46,10 @@ const STEPS = [
 
 const TESTIMONIALS = [
   {
-    name: 'Priya Sharma',
-    role: 'Software Engineer, Bangalore',
-    text: 'I finally bought my laptop in 4 months instead of 8. GoalFlow showed me exactly where I was leaking money.',
-    avatar: 'PS',
-    stars: 5,
-  },
-  {
-    name: 'Arjun Mehta',
-    role: 'MBA Student, Mumbai',
-    text: 'The goal impact feature is mind-blowing. I think twice before every purchase now.',
-    avatar: 'AM',
-    stars: 5,
-  },
-  {
-    name: 'Sneha Iyer',
-    role: 'Junior Designer, Chennai',
-    text: 'Built my ₹50,000 emergency fund in 6 months on a ₹18,000 salary. Genuinely changed my life.',
-    avatar: 'SI',
+    name: 'Early User',
+    role: 'Beta Tester',
+    text: 'We are currently collecting feedback from early users to improve GoalFlow and make goal-based financial planning simpler.',
+    avatar: 'EU',
     stars: 5,
   },
 ]
@@ -114,13 +100,12 @@ export default function LandingPage() {
           </div>
 
           <h1 className="text-5xl md:text-7xl font-bold tracking-tight leading-[1.08] mb-6">
-            Stop wondering where{' '}
-            <span className="gradient-text">your salary went.</span>
+            Every expense has a cost.<br />
+            GoalFlow shows the <span className="gradient-text">real one.</span>
           </h1>
 
           <p className="text-xl text-surface-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-            Plan your income, track expenses, and achieve financial goals faster.
-            GoalFlow shows you exactly how each purchase affects your dreams.
+            Track your salary, manage goals, and instantly see how every purchase delays or accelerates your financial future.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -230,6 +215,37 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── Comparison ── */}
+      <section className="py-24 px-6 relative border-t border-white/5 bg-white/1">
+        <div className="max-w-3xl mx-auto">
+          <div className="text-center mb-16">
+            <p className="text-brand-400 text-sm font-medium mb-3 tracking-wider uppercase">Comparison</p>
+            <h2 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
+              Not another <span className="gradient-text">expense tracker.</span>
+            </h2>
+          </div>
+
+          <div className="glass rounded-3xl overflow-hidden border border-white/5">
+            <div className="grid grid-cols-2 border-b border-white/5 bg-white/2 text-sm font-semibold tracking-wide uppercase text-surface-400">
+              <div className="p-4 md:p-6 text-center border-r border-white/5">Traditional Apps</div>
+              <div className="p-4 md:p-6 text-center text-brand-400">GoalFlow</div>
+            </div>
+            <div className="divide-y divide-white/5 text-sm md:text-base">
+              {[
+                { label: 'Tracks expenses', goal: 'Tracks expenses + goal delays' },
+                { label: 'Monthly reports', goal: 'Real-time impact alerts' },
+                { label: 'Budget focused', goal: 'Goal focused' },
+              ].map((row, idx) => (
+                <div key={idx} className="grid grid-cols-2 hover:bg-white/2 transition-colors">
+                  <div className="p-4 md:p-6 text-center text-surface-400 border-r border-white/5">{row.label}</div>
+                  <div className="p-4 md:p-6 text-center text-surface-50 font-medium">{row.goal}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ── How It Works ── */}
       <section id="how-it-works" className="py-24 px-6 bg-white/2">
         <div className="max-w-4xl mx-auto">
@@ -265,6 +281,7 @@ export default function LandingPage() {
           </div>
 
           <div className="grid md:grid-cols-3 gap-6">
+            <div className="hidden md:block" />
             {TESTIMONIALS.map(t => (
               <div key={t.name} className="glass rounded-2xl p-6">
                 <div className="flex gap-0.5 mb-4">
@@ -284,6 +301,7 @@ export default function LandingPage() {
                 </div>
               </div>
             ))}
+            <div className="hidden md:block" />
           </div>
         </div>
       </section>
@@ -306,6 +324,27 @@ export default function LandingPage() {
               >
                 Create your free account <ArrowRight size={18} />
               </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Founder ── */}
+      <section className="py-20 px-6 border-t border-white/5 bg-white/1">
+        <div className="max-w-3xl mx-auto">
+          <div className="glass rounded-3xl p-8 md:p-12 flex flex-col md:flex-row items-center gap-8 relative overflow-hidden">
+            <div className="absolute inset-0 bg-brand-500/5 pointer-events-none" />
+            <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-brand-600 to-purple-600 flex items-center justify-center text-3xl font-extrabold text-white shadow-lg flex-shrink-0">
+              VK
+            </div>
+            <div className="flex-1 text-center md:text-left relative z-10">
+              <p className="text-brand-400 text-sm font-medium mb-1 tracking-wider uppercase">Founder</p>
+              <h2 className="text-3xl font-bold tracking-tight mb-4 text-surface-50">
+                Built by Venkatesh Konakalla
+              </h2>
+              <p className="text-surface-300 text-base md:text-lg leading-relaxed font-normal">
+                GoalFlow started as a personal project to help students, freshers, and young professionals understand how daily spending affects long-term goals. Built using Next.js, Firebase, and real-world financial planning principles.
+              </p>
             </div>
           </div>
         </div>
