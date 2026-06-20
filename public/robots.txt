@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Allow: /auth/signup
+Allow: /auth/login
+
+# Block authenticated-only pages from crawlers
+Disallow: /dashboard
+Disallow: /onboarding
+
+Sitemap: https://goalflow.app/sitemap.xml

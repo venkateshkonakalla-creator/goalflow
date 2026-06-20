@@ -1,0 +1,39 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users can only read/write their own data
+    function isAuth() {
+      return request.auth != null;
+    }
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    function isDocOwner(res) {
+      return res == null || !('userId' in res.data) || request.auth.uid == res.data.userId;
+    }
+
+    match /users/{userId} {
+      allow read, write: if isAuth() && isOwner(userId);
+    }
+
+    match /goals/{goalId} {
+      allow read, write: if isAuth() && isDocOwner(resource);
+      allow create: if isAuth() && isOwner(request.resource.data.userId);
+    }
+
+    match /expenses/{expenseId} {
+      allow read, write: if isAuth() && isDocOwner(resource);
+      allow create: if isAuth() && isOwner(request.resource.data.userId);
+    }
+
+    match /income/{incomeId} {
+      allow read, update, delete: if isAuth() && isDocOwner(resource);
+      allow create: if isAuth() && isOwner(request.resource.data.userId);
+    }
+
+    match /allocations/{allocId} {
+      allow read, write: if isAuth() && isDocOwner(resource);
+      allow create: if isAuth() && isOwner(request.resource.data.userId);
+    }
+  }
+}
