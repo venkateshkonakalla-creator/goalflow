@@ -75,7 +75,7 @@ service cloud.firestore {
 
     // ── /contact_messages/{messageId} ──────────────────────────────────────
     match /contact_messages/{messageId} {
-      allow create: if isAuth() && isWriteOwner();
+      allow create: if request.resource.data.userId == null || (isAuth() && request.resource.data.userId == request.auth.uid);
       allow read, update, delete: if false;  // immutable & write-only
     }
   }

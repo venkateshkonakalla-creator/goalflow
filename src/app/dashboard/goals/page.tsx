@@ -65,7 +65,7 @@ function validateForm(form: typeof DEFAULT_FORM): string | null {
 export default function GoalsPage() {
   const { user } = useAuth()
   const { showToast } = useToast()
-  const { watchAd, isUnlocked, consumeAd } = useAd()
+  const { watchAd, isUnlocked, consumeAd, usageLoading } = useAd()
   const [goals, setGoals] = useState<Goal[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [loading, setLoading] = useState(true)
@@ -112,12 +112,18 @@ export default function GoalsPage() {
   }
 
   async function handleNewGoalClick() {
+    console.log('🎯 [GoalsPage] handleNewGoalClick — checking gate...')
     if (isUnlocked('goal_creation')) {
+      console.log('🎯 [GoalsPage] Goal creation unlocked, opening form')
       openCreate()
     } else {
+      console.log('🎯 [GoalsPage] Goal creation locked, showing ad')
       const success = await watchAd('goal_creation')
       if (success) {
+        console.log('🎯 [GoalsPage] Ad completed, opening form')
         openCreate()
+      } else {
+        console.log('🎯 [GoalsPage] Ad cancelled, form NOT opened')
       }
     }
   }
@@ -190,6 +196,7 @@ export default function GoalsPage() {
         setGoals(prev => [{ id, userId: user.uid, ...data, createdAt: new Date(), updatedAt: new Date() }, ...prev])
         trackGoalCreated(data.category, data.targetAmount)
         showToast('Goal created.')
+        console.log('🎯 [GoalsPage] Goal created successfully, consuming ad gate')
         await consumeAd('goal_creation')
       }
       setShowForm(false)
@@ -232,9 +239,12 @@ export default function GoalsPage() {
         </div>
         <button
           onClick={handleNewGoalClick}
-          className="flex items-center justify-center gap-2 bg-brand-500 hover:bg-brand-600 text-white text-sm px-4 py-2.5 rounded-xl transition-colors font-medium min-h-[44px] sm:min-h-0 sm:w-auto w-full"
+          disabled={usageLoading}
+          className="flex items-center justify-center gap-2 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-sm px-4 py-2.5 rounded-xl transition-colors font-medium min-h-[44px] sm:min-h-0 sm:w-auto w-full"
         >
-          {isUnlocked('goal_creation') ? (
+          {usageLoading ? (
+            <>Loading…</>
+          ) : isUnlocked('goal_creation') ? (
             <><Plus size={16} /> New Goal</>
           ) : (
             <><Plus size={16} /> Watch Ad to Add Goal</>
@@ -296,9 +306,12 @@ export default function GoalsPage() {
           </div>
           <button
             onClick={handleNewGoalClick}
-            className="inline-flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white text-sm px-5 py-2.5 rounded-xl transition-colors font-medium min-h-[44px]"
+            disabled={usageLoading}
+            className="inline-flex items-center gap-2 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-sm px-5 py-2.5 rounded-xl transition-colors font-medium min-h-[44px]"
           >
-            {isUnlocked('goal_creation') ? (
+            {usageLoading ? (
+              <>Loading…</>
+            ) : isUnlocked('goal_creation') ? (
               <><Plus size={16} /> Create your first goal</>
             ) : (
               <><Plus size={16} /> Watch Ad to Create Goal</>

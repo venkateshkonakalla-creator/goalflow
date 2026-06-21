@@ -15,7 +15,7 @@ const GOAL_COLORS = ['#6366f1', '#f97316', '#22c55e', '#06b6d4', '#8b5cf6', '#ec
 export default function PlanningPage() {
   const { user } = useAuth()
   const { showToast } = useToast()
-  const { watchAd, isUnlocked, consumeAd } = useAd()
+  const { watchAd, isUnlocked, consumeAd, usageLoading } = useAd()
   const [goals, setGoals] = useState<Goal[]>([])
   const [income, setIncomeState] = useState('')
   const [source, setSource] = useState('Salary')
@@ -75,6 +75,7 @@ export default function PlanningPage() {
       setSaved(true)
       showToast('Monthly plan saved.')
       setTimeout(() => setSaved(false), 3000)
+      console.log('📊 [PlanningPage] Plan saved successfully, consuming ad gate')
       await consumeAd('savings_plan')
     } catch (err) {
       showToast(friendlyError(err, 'Could not save your plan. Please try again.'), 'error')
@@ -113,7 +114,11 @@ export default function PlanningPage() {
         <p className="text-surface-400 text-sm mt-1">{displayMonth}</p>
       </div>
 
-      {isUnlocked('savings_plan') ? (
+      {usageLoading ? (
+        <div className="glass rounded-2xl p-8 text-center">
+          <p className="text-surface-400 text-sm">Loading your plan status…</p>
+        </div>
+      ) : isUnlocked('savings_plan') ? (
         <>
           {/* ── Income Card ── */}
           <div className="glass rounded-2xl p-5 sm:p-6 mb-6">
@@ -293,9 +298,11 @@ export default function PlanningPage() {
           </p>
           <button
             onClick={async () => {
+              console.log('📊 [PlanningPage] Watch ad button clicked')
               await watchAd('savings_plan')
             }}
-            className="flex items-center justify-center gap-2 bg-brand-500 hover:bg-brand-600 text-white font-semibold px-6 py-3 rounded-xl transition-all hover:-translate-y-0.5 z-10 shadow-glow min-h-[46px]"
+            disabled={usageLoading}
+            className="flex items-center justify-center gap-2 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white font-semibold px-6 py-3 rounded-xl transition-all hover:-translate-y-0.5 z-10 shadow-glow min-h-[46px]"
           >
             <Sparkles size={16} /> Watch Ad to Generate Plan
           </button>

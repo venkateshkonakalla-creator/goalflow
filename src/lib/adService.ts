@@ -82,11 +82,16 @@ export async function trackAdRevenue(adId: string, amount: number): Promise<void
 // ─── FIRESTORE SERVICES WRAPPERS ─────────────────────────────────────────────
 
 export async function getUserUsage(userId: string): Promise<UserUsage> {
-  return dbGetUserUsage(userId)
+  console.log('🔒 [adService.getUserUsage] Fetching usage for user:', userId)
+  const usage = await dbGetUserUsage(userId)
+  console.log('🔒 [adService.getUserUsage] Result:', JSON.stringify(usage))
+  return usage
 }
 
 export async function setUserUsage(userId: string, data: Partial<UserUsage>): Promise<void> {
+  console.log('🔥 [adService.setUserUsage] Updating usage for user:', userId, JSON.stringify(data))
   await dbUpdateUserUsage(userId, data)
+  console.log('✅ [adService.setUserUsage] Update successful')
 }
 
 export async function saveContactMessage(userId: string | null, data: { name: string; email: string; message: string }): Promise<string> {

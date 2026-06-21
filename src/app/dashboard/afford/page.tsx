@@ -15,7 +15,7 @@ import type { Goal, Expense, Income, Allocation } from '@/types'
 export default function AffordPage() {
   const { user } = useAuth()
   const { showToast } = useToast()
-  const { watchAd, isUnlocked, consumeAd } = useAd()
+  const { watchAd, isUnlocked, consumeAd, usageLoading } = useAd()
   const [goals, setGoals] = useState<Goal[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [income, setIncome] = useState<Income | null>(null)
@@ -69,16 +69,23 @@ export default function AffordPage() {
     )
     setResult(r)
     trackAffordabilityCheck(costNum, r.canAfford)
+    console.log('💰 [AffordPage] Affordability check complete, consuming ad gate')
     await consumeAd('affordability_checker')
   }
 
   async function handleButtonClick() {
+    console.log('💰 [AffordPage] handleButtonClick — checking gate...')
     if (isUnlocked('affordability_checker')) {
+      console.log('💰 [AffordPage] Affordability unlocked, running check')
       await handleCalculate()
     } else {
+      console.log('💰 [AffordPage] Affordability locked, showing ad')
       const success = await watchAd('affordability_checker')
       if (success) {
+        console.log('💰 [AffordPage] Ad completed, running check')
         await handleCalculate()
+      } else {
+        console.log('💰 [AffordPage] Ad cancelled, check NOT run')
       }
     }
   }
@@ -141,9 +148,12 @@ export default function AffordPage() {
         </div>
         <button
           onClick={handleButtonClick}
-          className="w-full flex items-center justify-center gap-2 bg-brand-500 hover:bg-brand-600 text-white font-semibold py-3 rounded-xl transition-colors min-h-[48px]"
+          disabled={usageLoading}
+          className="w-full flex items-center justify-center gap-2 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white font-semibold py-3 rounded-xl transition-colors min-h-[48px]"
         >
-          {isUnlocked('affordability_checker') ? (
+          {usageLoading ? (
+            <>Loading…</>
+          ) : isUnlocked('affordability_checker') ? (
             <><Sparkles size={16} /> Check affordability</>
           ) : (
             <><Sparkles size={16} /> Watch Ad to Check Affordability</>

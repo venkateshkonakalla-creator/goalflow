@@ -40,10 +40,6 @@ export default function BannerAd() {
     const invokeScript = document.createElement('script')
     invokeScript.type = 'text/javascript'
     invokeScript.src = `//www.highperformanceformat.com/${key}/invoke.js`
-    console.log("Banner320:", banner320)
-    console.log("Banner728:", banner728)
-    console.log("Using key:", key)
-    console.log("Loading:", `//www.highperformanceformat.com/${key}/invoke.js`)
     container.appendChild(optionsScript)
     container.appendChild(invokeScript)
   }, [banner320, banner728])

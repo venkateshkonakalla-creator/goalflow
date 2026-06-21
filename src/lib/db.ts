@@ -20,18 +20,15 @@ export async function createGoal(userId: string, data: Omit<Goal, 'id' | 'userId
 
 export async function getGoals(userId: string): Promise<Goal[]> {
   try {
-    console.log('🔍 [getGoals] Starting fetch for userId:', userId)
     const q = query(
       collection(db, 'goals'),
       where('userId', '==', userId)
     )
 
     const snap = await getDocs(q)
-    console.log('✅ [getGoals] Successfully fetched', snap.docs.length, 'goals')
     
     const results = snap.docs.map(d => {
       const data = d.data()
-      console.log('📄 [getGoals] Document:', d.id, data)
       return {
         id: d.id,
         ...data,
@@ -70,10 +67,8 @@ export async function createExpense(userId: string, data: Omit<Expense, 'id' | '
 
 export async function getExpenses(userId: string, month?: string): Promise<Expense[]> {
   try {
-    console.log('🔍 [getExpenses] Starting fetch for userId:', userId, 'month:', month)
-    let q = query(collection(db, 'expenses'), where('userId', '==', userId))
+    const q = query(collection(db, 'expenses'), where('userId', '==', userId))
     const snap = await getDocs(q)
-    console.log('✅ [getExpenses] Successfully fetched', snap.docs.length, 'expenses')
     const expenses = snap.docs.map(d => ({ id: d.id, ...d.data() } as Expense))
     // Sort in-memory descending by date to avoid requiring a Firestore composite index
     expenses.sort((a, b) => b.date.localeCompare(a.date))
@@ -109,14 +104,11 @@ export async function setIncome(userId: string, month: string, amount: number, s
 
 export async function getIncome(userId: string, month: string): Promise<Income | null> {
   try {
-    console.log('💰 [getIncome] Fetching for userId:', userId, 'month:', month)
     const id = `${userId}_${month}`
     const snap = await getDoc(doc(db, 'income', id))
     if (!snap.exists()) {
-      console.log('💰 [getIncome] No income document found for', id)
       return null
     }
-    console.log('✅ [getIncome] Income found:', snap.data())
     return { id: snap.id, ...snap.data() } as Income
   } catch (error) {
     console.error('❌ [getIncome] Error fetching income:', error)
@@ -145,10 +137,8 @@ export async function saveAllocations(userId: string, month: string, allocations
 
 export async function getAllocations(userId: string, month: string): Promise<Allocation[]> {
   try {
-    console.log('🔍 [getAllocations] Starting fetch for userId:', userId, 'month:', month)
     const q = query(collection(db, 'allocations'), where('userId', '==', userId), where('month', '==', month))
     const snap = await getDocs(q)
-    console.log('✅ [getAllocations] Successfully fetched', snap.docs.length, 'allocations')
     return snap.docs.map(d => ({ id: d.id, ...d.data() } as Allocation))
   } catch (error) {
     console.error('❌ [getAllocations] Error fetching allocations:', error)
@@ -170,8 +160,10 @@ export interface UserUsage {
 
 export async function getUserUsage(userId: string): Promise<UserUsage> {
   try {
+    console.log('🔒 [getUserUsage] Reading usage doc for user:', userId)
     const snap = await getDoc(doc(db, 'users', userId, 'usage', 'state'))
     if (!snap.exists()) {
+      console.log('🔒 [getUserUsage] No usage doc found — first-time user, all free tiers available')
       return {
         freeGoalUsed: false,
         freeAffordabilityUsed: false,
@@ -179,27 +171,28 @@ export async function getUserUsage(userId: string): Promise<UserUsage> {
       }
     }
     const data = snap.data()
-    return {
+    const usage: UserUsage = {
       freeGoalUsed: !!data.freeGoalUsed,
       freeAffordabilityUsed: !!data.freeAffordabilityUsed,
       freePlanningUsed: !!data.freePlanningUsed
     }
+    console.log('🔒 [getUserUsage] Usage loaded from Firestore:', JSON.stringify(usage))
+    return usage
   } catch (error) {
-    console.error('❌ [getUserUsage] Error fetching user usage:', error)
-    return {
-      freeGoalUsed: false,
-      freeAffordabilityUsed: false,
-      freePlanningUsed: false
-    }
+    console.error('❌ [getUserUsage] Firestore read FAILED — re-throwing to prevent free access bypass:', error)
+    // CRITICAL: Do NOT return defaults here. Returning {freeXxxUsed: false}
+    // on error would silently grant free access on every Firestore failure.
+    throw error
   }
 }
 
 export async function updateUserUsage(userId: string, data: Partial<UserUsage>) {
   try {
+    console.log('🔥 [updateUserUsage] Writing usage for user:', userId, JSON.stringify(data))
     await setDoc(doc(db, 'users', userId, 'usage', 'state'), data, { merge: true })
-    console.log('✅ [updateUserUsage] Successfully updated usage for user:', userId, data)
+    console.log('✅ [updateUserUsage] Firestore write successful for user:', userId)
   } catch (error) {
-    console.error('❌ [updateUserUsage] Error updating user usage:', error)
+    console.error('❌ [updateUserUsage] Firestore write FAILED for user:', userId, error)
     throw error
   }
 }
@@ -211,7 +204,6 @@ export async function saveContactMessage(userId: string | null, data: { name: st
       userId,
       createdAt: serverTimestamp(),
     })
-    console.log('✅ [saveContactMessage] Contact message saved. Doc ID:', ref.id)
     return ref.id
   } catch (error) {
     console.error('❌ [saveContactMessage] Error saving contact message:', error)
