@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { useToast } from '@/context/ToastContext'
-import { getGoals, getExpenses, createExpense, updateExpense, deleteExpense, getAllocations } from '@/lib/db'
+import { getGoals, getExpenses, createExpense, updateExpense, deleteExpense, getAllocations, createExpensesBatch } from '@/lib/db'
 import { calculateGoalImpact, getImpactMessage } from '@/lib/goalImpact'
 import { friendlyError } from '@/lib/errors'
 import { trackExpenseAdded } from '@/lib/analytics'
@@ -44,7 +44,11 @@ export default function ExpensesPage() {
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [entryMode, setEntryMode] = useState<'single' | 'bulk'>('single')
   const [form, setForm] = useState(DEFAULT_FORM)
+  const [bulkRows, setBulkRows] = useState<Array<{ id: string; amount: string; category: ExpenseCategory; description: string; date: string }>>([
+    { id: crypto.randomUUID(), amount: '', category: 'food', description: '', date: new Date().toISOString().split('T')[0] },
+  ])
   const [formError, setFormError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null)
@@ -72,6 +76,7 @@ export default function ExpensesPage() {
     setForm(DEFAULT_FORM)
     setFormError(null)
     setEditingId(null)
+    setEntryMode('single')
     setShowForm(true)
   }
 
@@ -84,7 +89,16 @@ export default function ExpensesPage() {
     })
     setFormError(null)
     setEditingId(expense.id)
+    setEntryMode('single')
     setShowForm(true)
+  }
+
+  function addBulkRow() {
+    setBulkRows(prev => [...prev, { id: crypto.randomUUID(), amount: '', category: 'food', description: '', date: new Date().toISOString().split('T')[0] }])
+  }
+
+  function updateBulkRow(id: string, field: 'amount' | 'category' | 'description' | 'date', value: string) {
+    setBulkRows(prev => prev.map(row => row.id === id ? { ...row, [field]: value } : row))
   }
 
   async function handleSave() {
@@ -133,6 +147,34 @@ export default function ExpensesPage() {
       setShowForm(false)
     } catch (err) {
       setFormError(friendlyError(err, 'Could not save this expense. Please try again.'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleBulkSave() {
+    if (!user) return
+    const validRows = bulkRows.filter(row => Number(row.amount) > 0)
+    if (validRows.length === 0) {
+      setFormError('Add at least one expense with an amount greater than zero.')
+      return
+    }
+    setSaving(true)
+    setFormError(null)
+    try {
+      const ids = await createExpensesBatch(user.uid, validRows.map(row => ({
+        amount: Number(row.amount),
+        category: row.category,
+        description: row.description.trim(),
+        date: row.date,
+      })))
+      const created = ids.map((id, index) => ({ id, userId: user.uid, amount: Number(validRows[index].amount), category: validRows[index].category, description: validRows[index].description.trim(), date: validRows[index].date, createdAt: new Date() }))
+      setExpenses(prev => [...created, ...prev])
+      setBulkRows([{ id: crypto.randomUUID(), amount: '', category: 'food', description: '', date: new Date().toISOString().split('T')[0] }])
+      setShowForm(false)
+      showToast('Expenses saved.')
+    } catch (err) {
+      setFormError(friendlyError(err, 'Could not save those expenses. Please try again.'))
     } finally {
       setSaving(false)
     }
@@ -327,6 +369,12 @@ export default function ExpensesPage() {
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowForm(false)} />
           <div className="relative z-10 w-full sm:max-w-sm glass rounded-t-2xl sm:rounded-2xl p-6 max-h-[92vh] overflow-y-auto">
             <h2 className="text-lg font-bold mb-6">{editingId ? 'Edit Expense' : 'Log Expense'}</h2>
+            {!editingId && (
+              <div className="flex gap-2 mb-4">
+                <button onClick={() => setEntryMode('single')} className={`flex-1 rounded-xl px-3 py-2 text-sm ${entryMode === 'single' ? 'bg-brand-500 text-white' : 'bg-white/5 text-surface-300'}`}>Single Expense</button>
+                <button onClick={() => setEntryMode('bulk')} className={`flex-1 rounded-xl px-3 py-2 text-sm ${entryMode === 'bulk' ? 'bg-brand-500 text-white' : 'bg-white/5 text-surface-300'}`}>Bulk Expenses</button>
+              </div>
+            )}
 
             {formError && (
               <div className="bg-danger-500/10 border border-danger-500/20 text-danger-400 text-sm rounded-xl px-4 py-3 mb-4">
@@ -335,89 +383,65 @@ export default function ExpensesPage() {
             )}
 
             <div className="space-y-4">
-              {/* Amount */}
-              <div>
-                <label className="block text-xs font-medium text-surface-400 mb-1.5">Amount (₹)</label>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  value={form.amount}
-                  onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
-                  placeholder="500"
-                  autoFocus
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-lg font-bold text-surface-50 placeholder:text-surface-600 focus:border-brand-500/50"
-                />
-              </div>
-
-              {/* Category */}
-              <div>
-                <label className="block text-xs font-medium text-surface-400 mb-2">Category</label>
-                <div className="grid grid-cols-4 gap-2">
-                  {CATEGORIES.map(cat => (
-                    <button
-                      key={cat.value}
-                      type="button"
-                      onClick={() => setForm(f => ({ ...f, category: cat.value }))}
-                      className={`flex flex-col items-center gap-1 p-2.5 rounded-xl border text-center transition-colors min-h-[56px] ${
-                        form.category === cat.value
-                          ? 'border-brand-500/50 bg-brand-500/10'
-                          : 'border-white/8 bg-white/3 hover:bg-white/6'
-                      }`}
-                    >
-                      <span className="text-lg">{cat.emoji}</span>
-                      <span className="text-xs text-surface-400">{cat.label}</span>
-                    </button>
+              {entryMode === 'bulk' && !editingId ? (
+                <>
+                  {bulkRows.map((row, index) => (
+                    <div key={row.id} className="rounded-2xl border border-white/10 bg-white/4 p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-medium text-surface-300">Expense {index + 1}</p>
+                      </div>
+                      <div className="grid gap-3">
+                        <input type="number" inputMode="numeric" value={row.amount} onChange={e => updateBulkRow(row.id, 'amount', e.target.value)} placeholder="200" className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm" />
+                        <div className="grid grid-cols-2 gap-3">
+                          <select value={row.category} onChange={e => updateBulkRow(row.id, 'category', e.target.value)} className="bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm">
+                            {CATEGORIES.map(cat => <option key={cat.value} value={cat.value}>{cat.label}</option>)}
+                          </select>
+                          <input type="date" value={row.date} onChange={e => updateBulkRow(row.id, 'date', e.target.value)} className="bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm" />
+                        </div>
+                        <input type="text" value={row.description} onChange={e => updateBulkRow(row.id, 'description', e.target.value)} placeholder="Food, travel, recharge..." className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm" />
+                      </div>
+                    </div>
                   ))}
-                </div>
-              </div>
-
-              {/* Description */}
-              <div>
-                <label className="block text-xs font-medium text-surface-400 mb-1.5">Description (optional)</label>
-                <input
-                  type="text"
-                  value={form.description}
-                  onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                  placeholder="What did you buy?"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-surface-50 placeholder:text-surface-600 focus:border-brand-500/50"
-                />
-              </div>
-
-              {/* Date */}
-              <div>
-                <label className="block text-xs font-medium text-surface-400 mb-1.5">Date</label>
-                <input
-                  type="date"
-                  value={form.date}
-                  onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-surface-50 focus:border-brand-500/50"
-                />
-              </div>
-
-              {/* Impact preview */}
-              {form.amount && goals.length > 0 && (
-                <div className="bg-warning-500/8 border border-warning-500/15 rounded-xl p-3">
-                  <p className="text-xs text-warning-400">
-                    <Zap size={12} className="inline mr-1" />
-                    This will be analyzed for goal impact when saved.
-                  </p>
-                </div>
+                  <button onClick={addBulkRow} className="text-sm text-brand-300">+ Add Row</button>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-xs font-medium text-surface-400 mb-1.5">Amount (₹)</label>
+                    <input type="number" inputMode="numeric" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} placeholder="500" autoFocus className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-lg font-bold text-surface-50 placeholder:text-surface-600 focus:border-brand-500/50" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-surface-400 mb-2">Category</label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {CATEGORIES.map(cat => (
+                        <button key={cat.value} type="button" onClick={() => setForm(f => ({ ...f, category: cat.value }))} className={`flex flex-col items-center gap-1 p-2.5 rounded-xl border text-center transition-colors min-h-[56px] ${form.category === cat.value ? 'border-brand-500/50 bg-brand-500/10' : 'border-white/8 bg-white/3 hover:bg-white/6'}`}>
+                          <span className="text-lg">{cat.emoji}</span>
+                          <span className="text-xs text-surface-400">{cat.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-surface-400 mb-1.5">Description (optional)</label>
+                    <input type="text" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="What did you buy?" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-surface-50 placeholder:text-surface-600 focus:border-brand-500/50" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-surface-400 mb-1.5">Date</label>
+                    <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-surface-50 focus:border-brand-500/50" />
+                  </div>
+                  {form.amount && goals.length > 0 && (
+                    <div className="bg-warning-500/8 border border-warning-500/15 rounded-xl p-3">
+                      <p className="text-xs text-warning-400"><Zap size={12} className="inline mr-1" />This will be analyzed for goal impact when saved.</p>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
             <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setShowForm(false)}
-                className="flex-1 bg-white/5 hover:bg-white/8 border border-white/10 text-surface-300 py-3 rounded-xl text-sm transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="flex-1 bg-brand-500 hover:bg-brand-600 disabled:opacity-60 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
-              >
-                {saving ? 'Saving…' : editingId ? 'Save changes' : 'Log expense'}
+              <button onClick={() => setShowForm(false)} className="flex-1 bg-white/5 hover:bg-white/8 border border-white/10 text-surface-300 py-3 rounded-xl text-sm transition-colors">Cancel</button>
+              <button onClick={editingId ? handleSave : entryMode === 'bulk' ? handleBulkSave : handleSave} disabled={saving} className="flex-1 bg-brand-500 hover:bg-brand-600 disabled:opacity-60 text-white font-semibold py-3 rounded-xl text-sm transition-colors">
+                {saving ? 'Saving…' : editingId ? 'Save changes' : entryMode === 'bulk' ? 'Save All' : 'Log expense'}
               </button>
             </div>
           </div>

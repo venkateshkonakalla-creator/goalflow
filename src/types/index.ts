@@ -74,16 +74,47 @@ export interface Allocation {
   goalId: string
   goalName: string
   amount: number
+  kind?: 'goal' | 'custom'
   createdAt: Date
 }
 
-export interface MonthlyPlan {
+export interface MonthlyPlanRecord {
+  id: string
   userId: string
   month: string
   income: number
   allocations: Allocation[]
   totalAllocated: number
   remaining: number
+  mode: 'goal' | 'custom'
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface MonthlySummary {
+  id: string
+  userId: string
+  month: string
+  income: number
+  expenses: number
+  saved: number
+  savingsRate: number
+  goalContributions: number
+  remainingSalary: number
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface PendingContribution {
+  id: string
+  userId: string
+  month: string
+  goalId: string
+  goalName: string
+  amount: number
+  status: 'pending' | 'completed'
+  createdAt: Date
+  updatedAt: Date
 }
 
 export interface DashboardStats {

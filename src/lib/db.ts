@@ -1,11 +1,11 @@
 // src/lib/db.ts
 import {
   collection, doc, addDoc, updateDoc, deleteDoc,
-  getDocs, getDoc, query, where, orderBy,
+  getDocs, getDoc, query, where,
   serverTimestamp, setDoc
 } from 'firebase/firestore'
 import { db } from './firebase'
-import type { Goal, Expense, Income, Allocation } from '@/types'
+import type { Goal, Expense, Income, Allocation, MonthlyPlanRecord, MonthlySummary, PendingContribution } from '@/types'
 
 // ─── GOALS ────────────────────────────────────────────────────────────────────
 export async function createGoal(userId: string, data: Omit<Goal, 'id' | 'userId' | 'createdAt' | 'updatedAt'>) {
@@ -63,6 +63,15 @@ export async function createExpense(userId: string, data: Omit<Expense, 'id' | '
     createdAt: serverTimestamp(),
   })
   return ref.id
+}
+
+export async function createExpensesBatch(userId: string, data: Array<Omit<Expense, 'id' | 'userId' | 'createdAt'>>) {
+  const refs = await Promise.all(data.map(item => addDoc(collection(db, 'expenses'), {
+    ...item,
+    userId,
+    createdAt: serverTimestamp(),
+  })))
+  return refs.map(ref => ref.id)
 }
 
 export async function getExpenses(userId: string, month?: string): Promise<Expense[]> {
@@ -149,6 +158,73 @@ export async function getAllocations(userId: string, month: string): Promise<All
     })
     throw error // Re-throw to see actual error
   }
+}
+
+// ─── MONTHLY PLAN SNAPSHOTS ─────────────────────────────────────────────────
+export async function saveMonthlyPlan(userId: string, month: string, data: { income: number; allocations: Omit<Allocation, 'id' | 'userId' | 'month' | 'createdAt'>[]; totalAllocated: number; remaining: number; mode: 'goal' | 'custom' }) {
+  const id = `${userId}_${month}`
+  await setDoc(doc(db, 'monthly_plans', id), {
+    userId,
+    month,
+    income: data.income,
+    allocations: data.allocations,
+    totalAllocated: data.totalAllocated,
+    remaining: data.remaining,
+    mode: data.mode,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  }, { merge: true })
+}
+
+export async function getMonthlyPlan(userId: string, month: string): Promise<MonthlyPlanRecord | null> {
+  const id = `${userId}_${month}`
+  const snap = await getDoc(doc(db, 'monthly_plans', id))
+  if (!snap.exists()) return null
+  return { id: snap.id, ...snap.data() } as MonthlyPlanRecord
+}
+
+// ─── MONTHLY SUMMARIES ──────────────────────────────────────────────────────
+export async function saveMonthlySummary(userId: string, month: string, data: Omit<MonthlySummary, 'id' | 'userId' | 'month' | 'createdAt' | 'updatedAt'>) {
+  const id = `${userId}_${month}`
+  await setDoc(doc(db, 'monthly_summaries', id), {
+    userId,
+    month,
+    ...data,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  }, { merge: true })
+}
+
+export async function getMonthlySummaries(userId: string): Promise<MonthlySummary[]> {
+  const q = query(collection(db, 'monthly_summaries'), where('userId', '==', userId))
+  const snap = await getDocs(q)
+  return snap.docs.map(d => ({ id: d.id, ...d.data() } as MonthlySummary))
+}
+
+// ─── PENDING CONTRIBUTIONS ────────────────────────────────────────────────
+export async function createPendingContribution(userId: string, data: Omit<PendingContribution, 'id' | 'userId' | 'createdAt' | 'updatedAt'>) {
+  const ref = await addDoc(collection(db, 'pending_contributions'), {
+    ...data,
+    userId,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  })
+  return ref.id
+}
+
+export async function getPendingContributions(userId: string, month?: string): Promise<PendingContribution[]> {
+  const q = query(collection(db, 'pending_contributions'), where('userId', '==', userId))
+  const snap = await getDocs(q)
+  const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as PendingContribution))
+  return month ? items.filter(item => item.month === month) : items
+}
+
+export async function updatePendingContribution(pendingId: string, data: Partial<PendingContribution>) {
+  await updateDoc(doc(db, 'pending_contributions', pendingId), { ...data, updatedAt: serverTimestamp() })
+}
+
+export async function deletePendingContribution(pendingId: string) {
+  await deleteDoc(doc(db, 'pending_contributions', pendingId))
 }
 
 // ─── USER MONETIZATION USAGE & CONTACT ──────────────────────────────────────────

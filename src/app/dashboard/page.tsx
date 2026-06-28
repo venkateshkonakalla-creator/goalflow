@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { useToast } from '@/context/ToastContext'
-import { getGoals, getExpenses, getIncome, getAllocations } from '@/lib/db'
+import { getGoals, getExpenses, getIncome, getAllocations, saveMonthlySummary } from '@/lib/db'
 import { calculateSavingsRate, calculateGoalImpact, getDashboardStatus, forecastDateLabel } from '@/lib/goalImpact'
 import { friendlyError } from '@/lib/errors'
 import { format } from 'date-fns'
@@ -103,11 +103,29 @@ export default function DashboardPage() {
       }).finally(() => setLoading(false))
   }, [user, currentMonth]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!user || !income) return
+    const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0)
+    const totalSaved = goals.reduce((s, g) => s + g.savedAmount, 0)
+    const remainingSalary = Math.max(0, (income.amount || 0) - totalExpenses - goals.reduce((s, g) => s + g.monthlyContribution, 0))
+    const savingsRate = calculateSavingsRate(income.amount || 0, totalExpenses)
+    saveMonthlySummary(user.uid, currentMonth, {
+      income: income.amount || 0,
+      expenses: totalExpenses,
+      saved: totalSaved,
+      savingsRate,
+      goalContributions: goals.reduce((sum, g) => sum + g.monthlyContribution, 0),
+      remainingSalary,
+    }).catch(() => undefined)
+  }, [user, income, expenses, goals, currentMonth])
+
   const monthlyIncome  = income?.amount || 0
   const totalExpenses  = expenses.reduce((s, e) => s + e.amount, 0)
   const remaining      = monthlyIncome - totalExpenses
   const savingsRate    = calculateSavingsRate(monthlyIncome, totalExpenses)
   const totalSaved     = goals.reduce((s, g) => s + g.savedAmount, 0)
+  const completedGoalContributions = goals.reduce((sum, g) => sum + (g.savedAmount >= g.targetAmount ? g.monthlyContribution : 0), 0)
+  const remainingSalary = Math.max(0, monthlyIncome - totalExpenses - completedGoalContributions)
 
   const recentExpenses  = expenses.slice(0, 5)
   const latestImpacts   = recentExpenses
@@ -205,6 +223,39 @@ export default function DashboardPage() {
         <StatCard label="Monthly Income"   value={monthlyIncome ? `₹${monthlyIncome.toLocaleString('en-IN')}` : '—'}         icon={Wallet}       color="bg-brand-400"   sub={income?.source || 'Not set'} />
         <StatCard label="Monthly Expenses" value={`₹${totalExpenses.toLocaleString('en-IN')}`}                               icon={TrendingDown} color="bg-danger-400"  sub="This month" />
         <StatCard label="Savings Rate"     value={`${savingsRate}%`}                                                          icon={Activity}     color="bg-success-400" sub={savingsRate >= 30 ? '🎉 Great job!' : 'Aim for 30%+'} />
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-4 mb-6 sm:mb-8">
+        <div className="glass rounded-2xl p-5 sm:p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] text-surface-500">Remaining Salary</p>
+              <p className="text-2xl font-bold">₹{remainingSalary.toLocaleString('en-IN')}</p>
+            </div>
+            <div className="w-11 h-11 rounded-2xl bg-success-500/10 flex items-center justify-center">
+              <Wallet size={18} className="text-success-400" />
+            </div>
+          </div>
+          <p className="text-sm text-surface-400">Available to spend after expenses and completed goal contributions.</p>
+        </div>
+        <div className="glass rounded-2xl p-5 sm:p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] text-surface-500">Financial Plan Status</p>
+              <p className="text-lg font-semibold">Allocated ₹{allocations.reduce((sum, item) => sum + item.amount, 0).toLocaleString('en-IN')}</p>
+            </div>
+            <div className="w-11 h-11 rounded-2xl bg-brand-500/10 flex items-center justify-center">
+              <Calculator size={18} className="text-brand-400" />
+            </div>
+          </div>
+          <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+            <div className="h-full rounded-full bg-brand-500 transition-all" style={{ width: `${Math.min(100, monthlyIncome > 0 ? (allocations.reduce((sum, item) => sum + item.amount, 0) / monthlyIncome) * 100 : 0)}%` }} />
+          </div>
+          <div className="mt-3 flex justify-between text-xs text-surface-500">
+            <span>Income: ₹{monthlyIncome.toLocaleString('en-IN')}</span>
+            <span>Spent: ₹{totalExpenses.toLocaleString('en-IN')}</span>
+          </div>
+        </div>
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">

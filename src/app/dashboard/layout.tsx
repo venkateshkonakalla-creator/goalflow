@@ -9,7 +9,7 @@ import { saveFeedback } from '@/lib/adService'
 import SocialBarAd from '@/components/SocialBarAd'
 import Footer from '@/components/Footer'
 import {
-  LayoutDashboard, Target, Receipt, BarChart3, CalendarDays,
+  LayoutDashboard, Target, Receipt, BarChart3, CalendarDays, Clock3, History,
   TrendingUp, LogOut, Menu, X, Zap, Calculator, MessageSquare, Star
 } from 'lucide-react'
 
@@ -21,6 +21,8 @@ const NAV = [
   { href: '/dashboard/afford', label: 'Afford?', icon: Calculator },
   { href: '/dashboard/expenses', label: 'Expenses', icon: Receipt },
   { href: '/dashboard/planning', label: 'Planning', icon: CalendarDays },
+  { href: '/dashboard/pendings', label: 'Pendings', icon: Clock3 },
+  { href: '/dashboard/history', label: 'History', icon: History },
   { href: '/dashboard/analytics', label: 'Insights', icon: BarChart3 },
 ]
 

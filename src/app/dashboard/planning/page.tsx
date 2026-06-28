@@ -4,11 +4,12 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { useToast } from '@/context/ToastContext'
 import { useAd } from '@/context/AdContext'
-import { getGoals, getIncome, getAllocations, setIncome, saveAllocations } from '@/lib/db'
+import { getGoals, getIncome, getAllocations, setIncome, saveAllocations, saveMonthlyPlan, createPendingContribution } from '@/lib/db'
 import { friendlyError } from '@/lib/errors'
 import { format } from 'date-fns'
 import { Wallet, Save, AlertCircle, CheckCircle2, Sparkles, Lock } from 'lucide-react'
 import type { Goal } from '@/types'
+import { updateGoal } from '@/lib/db'
 
 const GOAL_COLORS = ['#6366f1', '#f97316', '#22c55e', '#06b6d4', '#8b5cf6', '#ec4899']
 
@@ -23,6 +24,13 @@ export default function PlanningPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [planMode, setPlanMode] = useState<'goal' | 'custom'>('goal')
+  const [customItems, setCustomItems] = useState<Array<{ id: string; label: string; amount: string }>>([
+    { id: crypto.randomUUID(), label: 'Food Budget', amount: '' },
+    { id: crypto.randomUUID(), label: 'Travel Budget', amount: '' },
+  ])
+  const [showPendingPrompt, setShowPendingPrompt] = useState(false)
+  const [pendingChoices, setPendingChoices] = useState<Array<{ goalId: string; goalName: string; amount: number }>>([])
 
   const currentMonth = format(new Date(), 'yyyy-MM')
   const displayMonth = format(new Date(), 'MMMM yyyy')
@@ -47,7 +55,9 @@ export default function PlanningPage() {
   }, [user, currentMonth]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const incomeNum = Number(income) || 0
-  const totalAllocated = Object.values(allocMap).reduce((s, v) => s + (Number(v) || 0), 0)
+  const totalAllocated = planMode === 'custom'
+    ? customItems.reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
+    : Object.values(allocMap).reduce((s, v) => s + (Number(v) || 0), 0)
   const remaining = incomeNum - totalAllocated
   const isOverBudget = remaining < 0
   const allocationPct = incomeNum > 0 ? Math.min(100, (totalAllocated / incomeNum) * 100) : 0
@@ -66,21 +76,62 @@ export default function PlanningPage() {
     setSaving(true)
     try {
       await setIncome(user.uid, currentMonth, incomeNum, source.trim() || 'Salary')
-      const allocs = goals.map(g => ({
-        goalId: g.id,
-        goalName: g.name,
-        amount: Number(allocMap[g.id]) || 0,
-      })).filter(a => a.amount > 0)
+      const allocs = planMode === 'custom'
+        ? customItems.filter(item => Number(item.amount) > 0).map(item => ({
+            goalId: item.id,
+            goalName: item.label,
+            amount: Number(item.amount),
+            kind: 'custom' as const,
+          }))
+        : goals.map(g => ({
+            goalId: g.id,
+            goalName: g.name,
+            amount: Number(allocMap[g.id]) || 0,
+            kind: 'goal' as const,
+          })).filter(a => a.amount > 0)
       await saveAllocations(user.uid, currentMonth, allocs)
+      await saveMonthlyPlan(user.uid, currentMonth, {
+        income: incomeNum,
+        allocations: allocs,
+        totalAllocated,
+        remaining,
+        mode: planMode,
+      })
+      const pendingEntries = allocs.filter(item => item.amount > 0)
+      setPendingChoices(pendingEntries)
+      setShowPendingPrompt(true)
       setSaved(true)
       showToast('Monthly plan saved.')
       setTimeout(() => setSaved(false), 3000)
-      console.log('📊 [PlanningPage] Plan saved successfully, consuming ad gate')
       await consumeAd('savings_plan')
     } catch (err) {
       showToast(friendlyError(err, 'Could not save your plan. Please try again.'), 'error')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handlePendingChoice(choice: 'complete' | 'pending', item: { goalId: string; goalName: string; amount: number }) {
+    if (!user) return
+    try {
+      if (choice === 'complete') {
+        const goal = goals.find(g => g.id === item.goalId)
+        if (goal) {
+          await updateGoal(goal.id, { savedAmount: goal.savedAmount + item.amount })
+        }
+      } else {
+        await createPendingContribution(user.uid, {
+          month: currentMonth,
+          goalId: item.goalId,
+          goalName: item.goalName,
+          amount: item.amount,
+          status: 'pending',
+        })
+      }
+      setShowPendingPrompt(false)
+      showToast(choice === 'complete' ? 'Contribution marked as completed.' : 'Contribution saved as pending.', 'success')
+    } catch (err) {
+      showToast(friendlyError(err, 'Could not update the contribution workflow.'), 'error')
     }
   }
 
@@ -92,12 +143,16 @@ export default function PlanningPage() {
     setAllocMap(map)
   }
 
-  function fillByMonthly() {
-    const map: Record<string, string> = {}
-    goals.forEach(g => {
-      if (g.monthlyContribution > 0) map[g.id] = String(g.monthlyContribution)
-    })
-    setAllocMap(map)
+  function addCustomItem() {
+    setCustomItems(prev => [...prev, { id: crypto.randomUUID(), label: '', amount: '' }])
+  }
+
+  function updateCustomItem(id: string, field: 'label' | 'amount', value: string) {
+    setCustomItems(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item))
+  }
+
+  function removeCustomItem(id: string) {
+    setCustomItems(prev => prev.filter(item => item.id !== id))
   }
 
   if (loading) return (
@@ -155,63 +210,58 @@ export default function PlanningPage() {
           <div className="glass rounded-2xl p-5 sm:p-6 mb-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
               <h2 className="text-base font-semibold">Allocate your salary</h2>
-              <div className="flex gap-2">
-                <button
-                  onClick={fillByMonthly}
-                  className="text-xs bg-white/5 hover:bg-white/8 border border-white/10 px-3 py-2 rounded-lg text-surface-400 transition-colors flex-1 sm:flex-none"
-                >
-                  Use goal amounts
-                </button>
-                <button
-                  onClick={distributeEvenly}
-                  className="text-xs bg-white/5 hover:bg-white/8 border border-white/10 px-3 py-2 rounded-lg text-surface-400 transition-colors flex-1 sm:flex-none"
-                >
-                  Split evenly
-                </button>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => setPlanMode('goal')} className={`text-xs px-3 py-2 rounded-lg border ${planMode === 'goal' ? 'bg-brand-500/15 text-brand-300 border-brand-500/30' : 'bg-white/5 text-surface-400 border-white/10'}`}>Use goal amounts</button>
+                <button onClick={() => setPlanMode('custom')} className={`text-xs px-3 py-2 rounded-lg border ${planMode === 'custom' ? 'bg-brand-500/15 text-brand-300 border-brand-500/30' : 'bg-white/5 text-surface-400 border-white/10'}`}>Custom planning</button>
+                {planMode === 'goal' && <button onClick={distributeEvenly} className="text-xs bg-white/5 hover:bg-white/8 border border-white/10 px-3 py-2 rounded-lg text-surface-400 transition-colors">Split evenly</button>}
               </div>
             </div>
 
-            {goals.length === 0 ? (
-              <p className="text-surface-500 text-sm text-center py-6">
-                Create goals first, then allocate your salary to them.
-              </p>
+            {planMode === 'goal' ? (
+              goals.length === 0 ? (
+                <p className="text-surface-500 text-sm text-center py-6">Create goals first, then allocate your salary to them.</p>
+              ) : (
+                <div className="space-y-4">
+                  {goals.map((goal, i) => {
+                    const color = GOAL_COLORS[i % GOAL_COLORS.length]
+                    const amount = Number(allocMap[goal.id]) || 0
+                    const pct = incomeNum > 0 ? Math.min(100, (amount / incomeNum) * 100) : 0
+                    return (
+                      <div key={goal.id}>
+                        <div className="flex items-center justify-between mb-1 gap-2">
+                          <label className="text-sm font-medium text-surface-300 truncate">{goal.name}</label>
+                          {goal.monthlyContribution > 0 && (
+                            <span className="text-xs text-surface-600 flex-shrink-0">Suggested: ₹{goal.monthlyContribution.toLocaleString('en-IN')}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm text-surface-500">₹</span>
+                          <input type="number" inputMode="numeric" value={allocMap[goal.id] || ''} onChange={e => setAllocMap(m => ({ ...m, [goal.id]: e.target.value }))} placeholder="0" className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-surface-50 placeholder:text-surface-600 focus:border-brand-500/50" />
+                          <span className="text-xs text-surface-500 w-8 text-right">{pct.toFixed(0)}%</span>
+                        </div>
+                        <div className="h-1 bg-white/6 rounded-full overflow-hidden mt-1.5">
+                          <div className="h-full rounded-full transition-all duration-300" style={{ width: `${pct}%`, backgroundColor: color }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
             ) : (
               <div className="space-y-4">
-                {goals.map((goal, i) => {
-                  const color = GOAL_COLORS[i % GOAL_COLORS.length]
-                  const amount = Number(allocMap[goal.id]) || 0
-                  const pct = incomeNum > 0 ? Math.min(100, (amount / incomeNum) * 100) : 0
-                  return (
-                    <div key={goal.id}>
-                      <div className="flex items-center justify-between mb-1 gap-2">
-                        <label className="text-sm font-medium text-surface-300 truncate">{goal.name}</label>
-                        {goal.monthlyContribution > 0 && (
-                          <span className="text-xs text-surface-600 flex-shrink-0">
-                            Suggested: ₹{goal.monthlyContribution.toLocaleString('en-IN')}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm text-surface-500">₹</span>
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          value={allocMap[goal.id] || ''}
-                          onChange={e => setAllocMap(m => ({ ...m, [goal.id]: e.target.value }))}
-                          placeholder="0"
-                          className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-surface-50 placeholder:text-surface-600 focus:border-brand-500/50"
-                        />
-                        <span className="text-xs text-surface-500 w-8 text-right">{pct.toFixed(0)}%</span>
-                      </div>
-                      <div className="h-1 bg-white/6 rounded-full overflow-hidden mt-1.5">
-                        <div
-                          className="h-full rounded-full transition-all duration-300"
-                          style={{ width: `${pct}%`, backgroundColor: color }}
-                        />
-                      </div>
+                {customItems.map((item, index) => (
+                  <div key={item.id} className="rounded-2xl border border-white/10 bg-white/4 p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm font-medium text-surface-300">Category {index + 1}</p>
+                      <button onClick={() => removeCustomItem(item.id)} className="text-xs text-surface-500">Remove</button>
                     </div>
-                  )
-                })}
+                    <div className="grid sm:grid-cols-[1.3fr_0.7fr] gap-3">
+                      <input type="text" value={item.label} onChange={e => updateCustomItem(item.id, 'label', e.target.value)} placeholder="e.g. Food Budget" className="bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-surface-50 placeholder:text-surface-600" />
+                      <input type="number" inputMode="numeric" value={item.amount} onChange={e => updateCustomItem(item.id, 'amount', e.target.value)} placeholder="0" className="bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-surface-50 placeholder:text-surface-600" />
+                    </div>
+                  </div>
+                ))}
+                <button onClick={addCustomItem} className="text-sm text-brand-300">+ Add Category</button>
               </div>
             )}
           </div>
@@ -306,6 +356,32 @@ export default function PlanningPage() {
           >
             <Sparkles size={16} /> Watch Ad to Generate Plan
           </button>
+        </div>
+      )}
+
+      {showPendingPrompt && (
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowPendingPrompt(false)} />
+          <div className="relative z-10 w-full sm:max-w-md glass rounded-t-2xl sm:rounded-2xl p-6">
+            <h2 className="text-lg font-semibold mb-2">Have you already transferred this money?</h2>
+            <p className="text-sm text-surface-400 mb-4">Choose whether to mark each planned contribution as completed now or leave it pending.</p>
+            <div className="space-y-3">
+              {pendingChoices.map(item => (
+                <div key={item.goalId} className="rounded-2xl border border-white/10 bg-white/4 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium">{item.goalName}</p>
+                      <p className="text-xs text-surface-400">₹{item.amount.toLocaleString('en-IN')}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => handlePendingChoice('complete', item)} className="rounded-xl bg-success-500/15 px-3 py-2 text-sm text-success-300">Mark Completed</button>
+                      <button onClick={() => handlePendingChoice('pending', item)} className="rounded-xl bg-white/5 px-3 py-2 text-sm text-surface-300">Keep Pending</button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </div>

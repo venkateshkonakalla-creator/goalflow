@@ -52,6 +52,24 @@ service cloud.firestore {
       allow create: if isAuth() && isWriteOwner();
     }
 
+    // ── /monthly_plans/{planId} ──────────────────────────────────────────
+    match /monthly_plans/{planId} {
+      allow read, update, delete: if isAuth() && isDocOwner(resource);
+      allow create: if isAuth() && isWriteOwner();
+    }
+
+    // ── /monthly_summaries/{summaryId} ──────────────────────────────────
+    match /monthly_summaries/{summaryId} {
+      allow read, update, delete: if isAuth() && isDocOwner(resource);
+      allow create: if isAuth() && isWriteOwner();
+    }
+
+    // ── /pending_contributions/{pendingId} ─────────────────────────────
+    match /pending_contributions/{pendingId} {
+      allow read, update, delete: if isAuth() && isDocOwner(resource);
+      allow create: if isAuth() && isWriteOwner();
+    }
+
     // ── /ad_events/{eventId} ─────────────────────────────────────────────
     // Ad events are create-only; users cannot tamper with records once written.
     match /ad_events/{eventId} {
